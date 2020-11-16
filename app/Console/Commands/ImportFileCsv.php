@@ -5,8 +5,7 @@ namespace App\Console\Commands;
 use App\Imports\ReportsImport;
 use App\Imports\UsersImport;
 use Illuminate\Console\Command;
-use Maatwebsite\Excel\Facades\Excel;
-use function PHPUnit\Framework\isNull;
+use Illuminate\Support\Facades\Validator;
 
 class ImportFileCsv extends Command
 {
@@ -37,11 +36,33 @@ class ImportFileCsv extends Command
     /**
      * Execute the console command.
      *
-     * @return \Maatwebsite\Excel\Excel
+     * @return void
      */
     public function handle()
     {
-        switch ($this->argument('object')) {
+        $arr = explode('.', $this->option('path'));
+        $file_mime = array_pop($arr);
+        $mimetype = ['csv', 'xlsx'];
+        if (! in_array($file_mime, $mimetype)) {
+            $this->error('The file must be a file of type:'.implode(',', $mimetype).'.');
+
+            return;
+        }
+        $object = $this->chooseModel($this->argument('object'));
+        try {
+            $this->handlingModel($object, $this->option('path'));
+        } catch (\Exception $exception) {
+            $this->error($exception->getMessage());
+        }
+    }
+
+    /**
+     * @param $option
+     * @return \App\Imports\ReportsImport|\App\Imports\UsersImport
+     */
+    public function chooseModel($option)
+    {
+        switch ($option) {
             case 'user':
                 $object = new UsersImport();
                 break;
@@ -49,21 +70,40 @@ class ImportFileCsv extends Command
                 $object = new ReportsImport();
                 break;
             default:
-                $this->error('Model not found');
                 $object = null;
         }
 
-        try {
-            if ($object !== null) {
-                Excel::import($object, $this->option('path'), null, \Maatwebsite\Excel\Excel::CSV);
+        return $object;
+    }
+
+    /**
+     * @param $object
+     * @param $path
+     */
+    public function handlingModel($object, $path)
+    {
+        if ($object != null) {
+            $results = $object->importFile($path);
+            if ($results == null) {
                 $this->info('Import file to database successfully.');
             }
-        } catch (\Exception $exception) {
-            if ($object === null) {
-                $this->error('');
-            }
+            $this->handlingErrors($object->object(), $results);
+        } else {
+            $this->error('Model not found');
+        }
+    }
 
-            $this->error($exception->getMessage());
+    public function handlingErrors($object, $array)
+    {
+        foreach ($array as $ob) {
+            if ($object == 'user') {
+                if (count($ob['name']) != 0) {
+                    $this->error('Error in row '.$ob['row'].' '.$ob['name'][0]);
+                }
+                if (count($ob['email']) != 0) {
+                    $this->error('Error in row '.$ob['row'].' '.$ob['email'][0]);
+                }
+            }
         }
     }
 }

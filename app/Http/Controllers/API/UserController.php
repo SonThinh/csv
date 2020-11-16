@@ -6,69 +6,92 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\FileImportRequest;
 use App\Models\User;
 use App\Transformers\UserTransformer;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use PhpParser\Node\Stmt\DeclareDeclare;
+use Illuminate\Support\Facades\Validator;
 
 class UserController extends Controller
 {
-    function change_key($array, $old_key, $new_key)
+    function changeKeySpliceId(array $array, $keyRow)
     {
+        $keys = array_keys($array);
+        $keys[array_search($keys, $keys)] = $this->headings();
+        $combineKeyValue = array_combine($this->headings(), $array[$keyRow]);
 
-        if (! array_key_exists($old_key, $array)) {
-            return $array;
+        return $combineKeyValue;
+    }
+
+    public function checkValidate(array $array, $keyRow)
+    {
+        $errors = [];
+        $data = [];
+        $validator = Validator::make($array, [
+            'name'  => 'required|string',
+            'email' => 'required|string|email|max:255|unique:users,email',
+        ]);
+
+        if (count($validator->getMessageBag())) {
+            array_push($errors, [
+                'row'   => $keyRow,
+                'name'  => isset($validator->getMessageBag()->toArray()['name']) ? $validator->getMessageBag()
+                                                                                             ->toArray()['name'] : 0,
+                'email' => isset($validator->getMessageBag()->toArray()['email']) ? $validator->getMessageBag()
+                                                                                              ->toArray()['email'] : 0,
+            ],);
+        } else {
+            array_push($data, $array);
         }
 
-        $keys = array_keys($array);
-        $keys[array_search($old_key, $keys)] = $new_key;
+        return [
+            'data'  => $data,
+            'error' => $errors,
+        ];
+    }
 
-        return array_combine($keys, $array);
+    public function addDb(array $user)
+    {
+        User::create([
+            'name'              => $user['name'],
+            'email'             => $user['email'],
+            'email_verified_at' => now(),
+            'created_at'        => $user['created_at'],
+            'updated_at'        => $user['updated_at'],
+            'password'          => Hash::make('password'),
+        ]);
     }
 
     public function userImport(FileImportRequest $request)
     {
         if (($handle = fopen($request->file('file'), 'r')) !== false) {
-            # Set the parent multidimensional array key to 0.
-            $nn = 0;
+            $countRow = 1;
+            $flag = true;
+            $errors = [];
             while (($data = fgetcsv($handle, 1000, ",")) !== false) {
-                # Count the total keys in the row.
-                $c = count($data);
-                # Populate the multidimensional array.
-                for ($x = 1; $x < $c; $x++) {
-                    $csvarray[$nn][$x] = $data[$x];
+                if ($flag) {
+                    $flag = false;
+                    $countRow++;
+                    continue;
                 }
-                $nn++;
-            }
+                $countCol = count($data);
+                for ($i = 0; $i < $countCol; $i++) {
+                    $dataCsv[$countRow][$i] = $data[$i];
+                }
+                $arrChangeKey = $this->changeKeySpliceId($dataCsv, $countRow);
+                $splice = array_splice($arrChangeKey, 1);
+                $user = $this->checkValidate($splice, $countRow);
+                $countRow++;
 
-            $array = array_splice($csvarray, 1);
-
-            $list = [];
-            foreach ($array as $user) {
-                $keys = array_keys($user);
-                $new_key = [
-                    'name',
-                    'email',
-                    'created_at',
-                    'updated_at',
-                ];
-                $keys[array_search($keys, $keys)] = $new_key;
-                $a = array_combine($new_key, $user);
-                array_push($list, $a);
+                if (count($user['data']) != 0) {
+                    $this->addDb($user['data'][0]);
+                } else {
+                    array_push($errors, $user['error'][0]);
+                }
             }
-
-            foreach ($list as $user) {
-                User::create([
-                    'name'              => $user['name'],
-                    'email'             => $user['email'],
-                    'email_verified_at' => now(),
-                    'created_at'        => $user['created_at'],
-                    'updated_at'        => $user['updated_at'],
-                    'password'          => Hash::make('password'),
-                ]);
-            }
-            # Close the File.
             fclose($handle);
+
+            return $errors;
         }
+
+        return false;
     }
 
     public function headings(): array
@@ -91,9 +114,10 @@ class UserController extends Controller
             array_push($list, $data);
         }
         $listUser = array_merge([$this->headings()], $list);
-        $file_name = 'test.csv';
+        $file_name = 'D:\test.csv';
         $fp = fopen($file_name, 'w');
         foreach ($listUser as $fields) {
+            //$string = mb_convert_encoding($fields, "UTF-8", "Shift-JIS, EUC-JP, JIS, SJIS, JIS-ms, eucJP-win, SJIS-win, ISO-2022-JP,ISO-2022-JP-MS, SJIS-mac, SJIS-Mobile#DOCOMO, SJIS-Mobile#KDDI,SJIS-Mobile#SOFTBANK, UTF-8-Mobile#DOCOMO, UTF-8-Mobile#KDDI-A,UTF-8-Mobile#KDDI-B, UTF-8-Mobile#SOFTBANK, ISO-2022-JP-MOBILE#KDDI");
             fputcsv($fp, $fields);
         }
 

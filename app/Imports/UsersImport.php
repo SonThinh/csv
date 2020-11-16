@@ -2,29 +2,65 @@
 
 namespace App\Imports;
 
+use App\Http\Requests\FileImportRequest;
 use App\Models\User;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
-use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Illuminate\Support\Facades\Validator;
 
-class UsersImport implements ToCollection, WithHeadingRow
+class UsersImport extends BaseImport
 {
-    /**
-     * @param Collection $collection
-     */
-    public function collection(Collection $users)
+    public function object()
     {
-        dd($users);
-        foreach ($users as $user) {
-            User::creat([
-                'name'              => $user['name'],
-                'email'             => $user['email'],
-                'email_verified_at' => $user['email_verified_at'],
-                'created_at'        => $user['created_at'],
-                'updated_at'        => $user['updated_at'],
-                'password'          => Hash::make('password'),
-            ]);
+        return 'user';
+    }
+
+    public function headings(): array
+    {
+        return [
+            'id',
+            'name',
+            'email',
+            'created_at',
+            'updated_at',
+        ];
+    }
+
+    public function checkValidate(array $array, $keyRow)
+    {
+        $errors = [];
+        $data = [];
+        $validator = Validator::make($array, [
+            'name'  => 'required|string',
+            'email' => 'required|string|email|max:255|unique:users,email',
+        ]);
+
+        if (count($validator->getMessageBag())) {
+            array_push($errors, [
+                'row'   => $keyRow,
+                'name'  => isset($validator->getMessageBag()->toArray()['name']) ? $validator->getMessageBag()
+                                                                                             ->toArray()['name'] : [],
+                'email' => isset($validator->getMessageBag()->toArray()['email']) ? $validator->getMessageBag()
+                                                                                              ->toArray()['email'] : [],
+            ],);
+        } else {
+            array_push($data, $array);
         }
+
+        return [
+            'data'  => $data,
+            'error' => $errors,
+        ];
+    }
+
+    public function addDb(array $user)
+    {
+        User::create([
+            'name'              => $user['name'],
+            'email'             => $user['email'],
+            'email_verified_at' => now(),
+            'created_at'        => $user['created_at'],
+            'updated_at'        => $user['updated_at'],
+            'password'          => Hash::make('password'),
+        ]);
     }
 }

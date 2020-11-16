@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Exports\ReportsExport;
 use App\Exports\UsersExport;
 use App\Http\Controllers\API\UserController;
+use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -41,13 +42,33 @@ class ExportFileCsv extends Command
     /**
      * Execute the console command.
      *
-     * @return int
+     * @return void
      */
     public function handle()
     {
-        $arr = explode('/', $this->option('path'));
+        $arr = explode('.', $this->option('path'));
+        $file_mime = array_pop($arr);
+        $mimetype = ['csv', 'xlsx'];
+        if (! in_array($file_mime, $mimetype)) {
+            $this->error('The file must be a file of type:'.implode(',', $mimetype).'.');
 
-        switch ($this->argument('object')) {
+            return;
+        }
+        $object = $this->chooseModel($this->argument('object'));
+        try {
+            $this->handlingModel($object, $this->option('path'));
+        } catch (\Exception $exception) {
+            $this->error($exception->getMessage());
+        }
+    }
+
+    /**
+     * @param $option
+     * @return \App\Exports\ReportsExport|\App\Exports\UsersExport
+     */
+    public function chooseModel($option)
+    {
+        switch ($option) {
             case 'user':
                 $object = new UsersExport();
                 break;
@@ -55,21 +76,23 @@ class ExportFileCsv extends Command
                 $object = new ReportsExport();
                 break;
             default:
-                $this->error('Model not found');
                 $object = null;
         }
-        try {
-            $file_name = array_pop($arr);
-            if ($object !== null) {
-                $object->collect($this->option('path'));
-                $this->info('Export file to '.$this->option('path').' '.'successfully.');
-            }
-        } catch (\Exception $exception) {
-            if ($object === null) {
-                $this->error('');
-            }
 
-            $this->error($exception->getMessage());
+        return $object;
+    }
+
+    /**
+     * @param $object
+     * @param $path
+     */
+    public function handlingModel($object, $path)
+    {
+        if ($object !== null) {
+            $object->exportFile($path);
+            $this->info('Export file to '.$path.' '.'successfully.');
+        } else {
+            $this->error('Model not found');
         }
     }
 }

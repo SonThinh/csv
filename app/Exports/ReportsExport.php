@@ -4,11 +4,8 @@ namespace App\Exports;
 
 use App\Models\Report;
 use App\Transformers\ReportTransformer;
-use App\Transformers\UserTransformer;
-use Maatwebsite\Excel\Concerns\FromCollection;
-use Maatwebsite\Excel\Concerns\WithHeadings;
 
-class ReportsExport implements FromCollection, WithHeadings
+class ReportsExport
 {
     public function headings(): array
     {
@@ -26,18 +23,22 @@ class ReportsExport implements FromCollection, WithHeadings
         ];
     }
 
-    /**
-     * @return \Illuminate\Support\Collection
-     */
-    public function collection()
+    public function exportFile($path)
     {
         $listReport = Report::all();
-        $a = [];
+        $list = [];
         foreach ($listReport as $report) {
             $data = (new ReportTransformer())->transform($report);
-            array_push($a, $data);
+            array_push($list, $data);
         }
 
-        return collect($a);
+        $listUser = array_merge([$this->headings()], $list);
+
+        $fp = fopen($path, 'w');
+        foreach ($listUser as $fields) {
+            fputcsv($fp, $fields);
+        }
+
+        fclose($fp);
     }
 }
